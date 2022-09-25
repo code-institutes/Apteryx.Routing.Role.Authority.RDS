@@ -56,7 +56,7 @@ namespace Apteryx.Routing.Role.Authority.RDS.Controllers
                 });
 
             var pwd = model.Password.ToSHA1();
-            var account = await _db.SystemAccounts.AsQueryable().FirstAsync(f => f.Email == model.Email && f.Password == pwd);
+            var account = await _db.SystemAccounts.GetFirstAsync(f => f.Email == model.Email && f.Password == pwd);
             if (account == null)
             {
                 return Ok(ApteryxResultApi.Fail(ApteryxCodes.账号或密码错误));
@@ -88,7 +88,7 @@ namespace Apteryx.Routing.Role.Authority.RDS.Controllers
         )]
         [ApiRoleDescription("A", "添加")]
         [SwaggerResponse((int)ApteryxCodes.Unauthorized, null, typeof(ApteryxResult))]
-        public async Task<IActionResult> Post([FromBody] AddSystemAccountModel model)
+        public IActionResult Post([FromBody] AddSystemAccountModel model)
         {
             var email = model.Email?.Trim();
             var pwd = model.Password.Trim();

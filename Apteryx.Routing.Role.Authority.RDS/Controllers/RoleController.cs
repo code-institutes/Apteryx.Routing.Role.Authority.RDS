@@ -31,9 +31,9 @@ namespace Apteryx.Routing.Role.Authority.RDS.Controllers
         [SwaggerResponse((int)ApteryxCodes.请求成功, null, typeof(ApteryxResult<Role>))]
         public async Task<IActionResult> Post([FromBody] AddRoleModel model)
         {
-            var role = await _db.Roles.AsQueryable().FirstAsync(f => f.Name == model.Name.Trim());
+            var role = await _db.Roles.GetFirstAsync(f => f.Name == model.Name.Trim());
             if (role != null)
-                return Ok(ApteryxResultApi.Fail(ApteryxCodes.角色已存在,result:role));
+                return Ok(ApteryxResultApi.Fail(ApteryxCodes.角色已存在, role));
 
             role = new Role()
             {
@@ -56,11 +56,11 @@ namespace Apteryx.Routing.Role.Authority.RDS.Controllers
             foreach (var routeId in model.RouteIds)
             {
                 if (_db.Routes.AsQueryable().First(a => a.Id == routeId && a.IsMustHave == false) != null)
-                    _db.RoleRoutes.AsInsertable(new RoleRoute()
+                    await _db.RoleRoutes.InsertAsync(new RoleRoute()
                     {
                         RoleId = role.Id,
                         RouteId = routeId
-                    }).ExecuteReturnSnowflakeId();
+                    });
             }
             await _db.Logs.InsertAsync(new Log(HttpContext.GetAccountId(), "ApteryxRole", ActionMethods.添, "添加角色", null, role.ToJson()));
 
@@ -82,7 +82,7 @@ namespace Apteryx.Routing.Role.Authority.RDS.Controllers
             if (role == null)
                 return Ok(ApteryxResultApi.Fail(ApteryxCodes.角色不存在));
 
-            if (_db.Roles.AsQueryable().First(a => a.Name == model.Name && a.Id != model.Id) != null)
+            if (await _db.Roles.GetFirstAsync(a => a.Name == model.Name && a.Id != model.Id) != null)
                 return Ok(ApteryxResultApi.Fail(ApteryxCodes.角色已存在, $"角色名：\"{model.Name}\"已存在"));
 
             var result = role.Clone();
@@ -105,7 +105,7 @@ namespace Apteryx.Routing.Role.Authority.RDS.Controllers
             foreach (var routeId in model.RouteIds)
             {
                 if (_db.Routes.AsQueryable().First(a => a.Id == routeId && a.IsMustHave == false) != null)
-                    _db.RoleRoutes.Insert(new RoleRoute()
+                    await _db.RoleRoutes.InsertAsync(new RoleRoute()
                     {
                         RoleId = role.Id,
                         RouteId = routeId
@@ -131,7 +131,7 @@ namespace Apteryx.Routing.Role.Authority.RDS.Controllers
         {
             var accountId = HttpContext.GetAccountId();
             var account = await _db.SystemAccounts.GetFirstAsync(f => f.Id == accountId);
-            var routes = _db.Routes.AsQueryable().ToList();
+            var routes = await _db.Routes.GetListAsync();
 
             var data = new ResultOwnRouteModel()
             {
@@ -141,7 +141,7 @@ namespace Apteryx.Routing.Role.Authority.RDS.Controllers
                     Title = s.Key,
                     RouteInfo = s.Select(ss => new RouteInfoModel()
                     {
-                        IsOwn = _db.RoleRoutes.GetFirst(f => f.Id == account.RoleId && f.RouteId == ss.Id) != null,
+                        IsOwn = _db.RoleRoutes.GetFirst(f => f.RoleId == account.RoleId && f.RouteId == ss.Id) != null,
                         Route = ss
                     })
                 })
@@ -163,7 +163,7 @@ namespace Apteryx.Routing.Role.Authority.RDS.Controllers
             if (role == null)
                 return Ok(ApteryxResultApi.Fail(ApteryxCodes.角色不存在, "该角色不存在"));
 
-            var routes = _db.Routes.GetList();
+            var routes = await _db.Routes.GetListAsync();
 
             var data = new ResultOwnRouteModel()
             {
@@ -173,7 +173,7 @@ namespace Apteryx.Routing.Role.Authority.RDS.Controllers
                     Title = s.Key,
                     RouteInfo = s.Select(ss => new RouteInfoModel()
                     {
-                        IsOwn = _db.RoleRoutes.GetFirst(f => f.Id == role.Id && f.RouteId == ss.Id) != null,
+                        IsOwn = _db.RoleRoutes.GetFirst(f => f.RoleId == role.Id && f.RouteId == ss.Id) != null,
                         Route = ss
                     })
                 })
@@ -192,20 +192,20 @@ namespace Apteryx.Routing.Role.Authority.RDS.Controllers
         [SwaggerResponse((int)ApteryxCodes.请求成功, null, typeof(ApteryxResult))]
         public async Task<IActionResult> Delete([SwaggerParameter("角色ID", Required = true)] long id)
         {
+            var role = await _db.Roles.GetByIdAsync(id);
+            if (role == null)
+                return Ok(ApteryxResultApi.Fail(ApteryxCodes.角色不存在, "该角色不存在"));
+
             var groupId = SnowFlakeSingle.Instance.NextId();
             var sysAccountId = HttpContext.GetAccountId();
 
             _db.RoleRoutes.Delete(w => w.RoleId == id);
-            foreach (var sysAccount in _db.SystemAccounts.AsQueryable().Where(w => w.RoleId == id).ToList())
+            foreach (var sysAccount in _db.SystemAccounts.GetList(w => w.RoleId == id))
             {
-                var sysAccountResult = _db.SystemAccounts.DeleteById(sysAccount.Id);
-                if (sysAccountResult)
-                {
-                    await _db.Logs.InsertAsync(new Log(sysAccountId, "SystemAccount", ActionMethods.删, "删除角色联动删除账户", sysAccount.ToJson(),null,groupId));
-                }
+                _db.SystemAccounts.DeleteById(sysAccount.Id);
+                await _db.Logs.InsertAsync(new Log(sysAccountId, "SystemAccount", ActionMethods.删, "删除角色联动删除账户", sysAccount.ToJson(), null, groupId));
             }
-
-            var role = await _db.Roles.GetByIdAsync(id);
+            
             await _db.Roles.DeleteByIdAsync(id);
 
             await _db.Logs.InsertAsync(new Log(sysAccountId, "Role", ActionMethods.删, "删除角色", role.ToJson(), null, groupId));

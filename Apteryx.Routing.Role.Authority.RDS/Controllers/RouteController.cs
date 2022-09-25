@@ -74,9 +74,8 @@ namespace Apteryx.Routing.Role.Authority.RDS.Controllers
             if (route.AddType != AddTypes.人工)
                 return Ok(ApteryxResultApi.Fail(ApteryxCodes.路由无权修改, "只能编辑手动添加的路由"));
 
-            var check = await _db.Routes.GetFirstAsync(f => f.Path == path && f.Method == method);
+            var check = await _db.Routes.GetFirstAsync(f => f.Path == path && f.Method == method && f.Id  != routeId);
             if (check != null)
-                if (check.Id != routeId)
                     return Ok(ApteryxResultApi.Fail(ApteryxCodes.路由已存在, "已存在相同路由数据"));
 
             var result = route.Clone();
@@ -117,16 +116,19 @@ namespace Apteryx.Routing.Role.Authority.RDS.Controllers
         [SwaggerResponse((int)ApteryxCodes.请求成功, null, typeof(ApteryxResult))]
         public async Task<IActionResult> Delete([SwaggerParameter("路由ID", Required = true)] long id)
         {
-            var sysAccountId = HttpContext.GetAccountId();
             var route = await _db.Routes.GetByIdAsync(id);
             if (route == null)
                 return Ok(ApteryxResultApi.Fail(ApteryxCodes.路由不存在));
+
+            var sysAccountId = HttpContext.GetAccountId();
+
             if (route.AddType != AddTypes.人工)
                 return Ok(ApteryxResultApi.Fail(ApteryxCodes.路由无权删除, "只能删除手动添加的路由"));
 
             ////将路由从所有角色中删除
             //await _db.Roles.UpdateManyAsync(u => u.RouteIds.Contains(id), Builders<Role>.Update.Pull(p => p.RouteIds, id));
 
+            //删除角色路由权限
             _db.RoleRoutes.Delete(w => w.RouteId == route.Id);
 
             //删除路由

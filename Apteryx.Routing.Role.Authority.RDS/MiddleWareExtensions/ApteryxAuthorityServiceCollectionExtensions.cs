@@ -1,5 +1,4 @@
-﻿using Apteryx.Routing.Role.Authority.RDS.Entities;
-using Microsoft.AspNetCore.Authentication.JwtBearer;
+﻿using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.Http;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.IdentityModel.Tokens;
@@ -44,6 +43,7 @@ namespace Apteryx.Routing.Role.Authority.RDS
 
             //注入配置
             services.AddSingleton(config);
+            SnowFlakeSingle.WorkId = 31;
             //初始化数据库
             new ApteryxDbContext(config).InitDataBase();
             //注入数据操作类

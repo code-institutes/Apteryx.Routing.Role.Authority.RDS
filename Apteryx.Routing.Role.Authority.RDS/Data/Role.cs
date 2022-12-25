@@ -7,6 +7,7 @@ namespace Apteryx.Routing.Role.Authority.RDS
     {
         public string Name { get; set; }
         public string Description { get; set; }
+        public AddTypes AddType { get; set; } = AddTypes.人工;
 
         public object Clone()
         {

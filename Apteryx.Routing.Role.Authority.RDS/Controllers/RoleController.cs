@@ -33,7 +33,7 @@ namespace Apteryx.Routing.Role.Authority.RDS.Controllers
         {
             var role = await _db.Roles.GetFirstAsync(f => f.Name == model.Name.Trim());
             if (role != null)
-                return Ok(ApteryxResultApi.Fail(ApteryxCodes.角色已存在, role));
+                return Ok(ApteryxResultApi.Fail(ApteryxCodes.角色已存在, $"角色名：\"{model.Name}\"已存在"));
 
             role = new Role()
             {
@@ -161,7 +161,7 @@ namespace Apteryx.Routing.Role.Authority.RDS.Controllers
         {
             var role = await _db.Roles.GetByIdAsync(id);
             if (role == null)
-                return Ok(ApteryxResultApi.Fail(ApteryxCodes.角色不存在, "该角色不存在"));
+                return Ok(ApteryxResultApi.Fail(ApteryxCodes.角色不存在, $"角色不存在,ID:{id}"));
 
             var routes = await _db.Routes.GetListAsync();
 
@@ -194,7 +194,10 @@ namespace Apteryx.Routing.Role.Authority.RDS.Controllers
         {
             var role = await _db.Roles.GetByIdAsync(id);
             if (role == null)
-                return Ok(ApteryxResultApi.Fail(ApteryxCodes.角色不存在, "该角色不存在"));
+                return Ok(ApteryxResultApi.Fail(ApteryxCodes.角色不存在, $"角色不存在,ID:{id}"));
+
+            if (role.AddType == AddTypes.程序)
+                return Ok(ApteryxResultApi.Fail(ApteryxCodes.系统角色, "系统默认角色禁止删除！"));
 
             var groupId = SnowFlakeSingle.Instance.NextId();
             var sysAccountId = HttpContext.GetAccountId();

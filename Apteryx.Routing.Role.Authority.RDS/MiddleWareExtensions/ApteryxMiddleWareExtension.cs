@@ -1,4 +1,5 @@
 ﻿using Microsoft.AspNetCore.Builder;
+using Microsoft.Extensions.DependencyInjection;
 using Swashbuckle.AspNetCore.SwaggerUI;
 
 namespace Apteryx.Routing.Role.Authority.RDS
@@ -31,6 +32,12 @@ namespace Apteryx.Routing.Role.Authority.RDS
                 //c.ShowExtensions();
                 c.EnableValidator();
             });
+
+            using (IServiceScope serviceScope = app.ApplicationServices.CreateScope())
+            {
+                var initializeDataService = serviceScope.ServiceProvider.GetRequiredService<ApteryxInitializeDataService>();
+                initializeDataService.InitAccountRole();
+            }
 
             return app;
         }

@@ -1,10 +1,4 @@
-﻿using Apteryx.Routing.Role.Authority.RDS.Entities;
-using SqlSugar;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+﻿using SqlSugar;
 
 namespace Apteryx.Routing.Role.Authority.RDS.Data
 {

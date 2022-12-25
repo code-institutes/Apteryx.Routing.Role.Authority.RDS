@@ -1,6 +1,5 @@
 ﻿using Apteryx.Routing.Role.Authority.RDS.Data;
 using SqlSugar;
-using static Org.BouncyCastle.Math.EC.ECCurve;
 
 namespace Apteryx.Routing.Role.Authority.RDS
 {

@@ -1,5 +1,4 @@
-﻿
-namespace Apteryx.Routing.Role.Authority.RDS
+﻿namespace Apteryx.Routing.Role.Authority.RDS
 {
     public sealed class ResultOwnRouteModel
     {

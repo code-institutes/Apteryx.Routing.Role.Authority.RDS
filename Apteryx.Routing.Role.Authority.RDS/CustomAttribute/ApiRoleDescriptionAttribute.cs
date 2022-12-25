@@ -1,6 +1,4 @@
-﻿using System;
-
-namespace Apteryx.Routing.Role.Authority.RDS
+﻿namespace Apteryx.Routing.Role.Authority.RDS
 {
     /// <summary>
     /// 接口描述

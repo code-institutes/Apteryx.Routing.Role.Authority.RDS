@@ -1,5 +1,6 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.Mvc.Filters;
+using SqlSugar;
 using System.Text.Encodings.Web;
 using System.Text.Json;
 using System.Text.Unicode;
@@ -9,10 +10,10 @@ namespace Apteryx.Routing.Role.Authority.RDS
     [AttributeUsage(AttributeTargets.Class, AllowMultiple = false, Inherited = true)]
     public sealed class ConsoleAuthorizeAttribute : Attribute, IAuthorizationFilter, IActionFilter
     {
-        private readonly ApteryxDbContext _db;
-        public ConsoleAuthorizeAttribute(ApteryxDbContext context)
+        private readonly ISugarUnitOfWork<ApteryxDbContext> _context;
+        public ConsoleAuthorizeAttribute(ISugarUnitOfWork<ApteryxDbContext> context)
         {
-            this._db = context;
+            this._context = context;
         }
         public void OnActionExecuted(ActionExecutedContext context)
         {
@@ -63,22 +64,25 @@ namespace Apteryx.Routing.Role.Authority.RDS
             {
                 var method = context.HttpContext.Request.Method;
                 var template = $"/{context.ActionDescriptor.AttributeRouteInfo.Template}";
-                var accountId = context.HttpContext.User.Identity.Name;
+                var accountId = long.Parse(context.HttpContext.User.Identity.Name);
 
-                var systemAccount = _db.SystemAccounts.GetById(accountId);
-                if (systemAccount.IsSuper)
-                    return;
-
-                var route = _db.Routes.GetFirst(f => f.Method == method && f.Path == template);
-                if (route != null)
+                using(var db = _context.CreateContext())
                 {
-                    //var roleRoute = _db.RoleRoutes.FindOne(f => f.RoleId == systemAccount.RoleId && f.RouteId == route.Id);
-                    var roleRoute = _db.RoleRoutes.GetFirst(f => f.Id == systemAccount.RoleId && f.RouteId == route.Id);
-                    if (roleRoute != null)
+                    var systemAccount = db.SystemAccounts.GetById(accountId);
+                    if (systemAccount.IsSuper)
                         return;
-                }
-                context.Result = new BadRequestObjectResult(ApteryxResultApi.Fail(ApteryxCodes.权限不足)) { StatusCode = 200 };
-                return;
+
+                    var route = db.Routes.GetFirst(f => f.Method == method && f.Path == template);
+                    if (route != null)
+                    {
+                        //var roleRoute = _db.RoleRoutes.FindOne(f => f.RoleId == systemAccount.RoleId && f.RouteId == route.Id);
+                        var roleRoute = db.RoleRoutes.GetFirst(f => f.Id == systemAccount.RoleId && f.RouteId == route.Id);
+                        if (roleRoute != null)
+                            return;
+                    }
+                    context.Result = new BadRequestObjectResult(ApteryxResultApi.Fail(ApteryxCodes.权限不足)) { StatusCode = 200 };
+                    return;
+                }                
             }
             return;
         }

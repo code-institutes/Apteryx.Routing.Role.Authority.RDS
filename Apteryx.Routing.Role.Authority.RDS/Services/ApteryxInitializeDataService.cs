@@ -2,17 +2,18 @@
 using Microsoft.AspNetCore.Mvc.ActionConstraints;
 using Microsoft.AspNetCore.Mvc.Controllers;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
+using SqlSugar;
 using Swashbuckle.AspNetCore.Annotations;
 
 namespace Apteryx.Routing.Role.Authority.RDS
 {
     public class ApteryxInitializeDataService
     {
-        private readonly ApteryxDbContext _db;
+        private readonly ISugarUnitOfWork<ApteryxDbContext> _context;
         private readonly IActionDescriptorCollectionProvider actionDescriptor;
-        public ApteryxInitializeDataService(IActionDescriptorCollectionProvider collectionProvider, ApteryxDbContext dbContext)
+        public ApteryxInitializeDataService(IActionDescriptorCollectionProvider collectionProvider, ISugarUnitOfWork<ApteryxDbContext> context)
         {
-            this._db = dbContext;
+            this._context = context;
             this.actionDescriptor = collectionProvider;
         }
         /// <summary>
@@ -24,40 +25,43 @@ namespace Apteryx.Routing.Role.Authority.RDS
             RefreshRoute();
 
             //创建账户
-            var act = _db.SystemAccounts.AsQueryable();
-            if (!act.Any())
+            using (var db = _context.CreateContext())
             {
-                var role = _db.Roles.GetFirst(f => f.Name == "超管" && f.AddType == AddTypes.程序);
-                if (role == null)
+                var act = db.SystemAccounts.AsQueryable();
+                if (!act.Any())
                 {
-                    role = new Role()
+                    var role = db.Roles.GetFirst(f => f.Name == "超管" && f.AddType == AddTypes.程序);
+                    if (role == null)
                     {
-                        Name = "超管",
-                        AddType = AddTypes.程序,
-                        Description = "系统默认超级管理员",
-                    };
-                    _db.Roles.Insert(role);
-
-                    _db.SystemAccounts.Insert(new SystemAccount()
-                    {
-                        Email = "wyspaces@outlook.com",
-                        Password = "admin1234".ToSHA1(),
-                        IsSuper = true,
-                        RoleId= role.Id
-                    });
-
-                    var routes = _db.Routes.GetList();
-                    foreach(var route in routes)
-                    {
-                        _db.RoleRoutes.Insert(new RoleRoute()
+                        role = new Role()
                         {
-                            RoleId = role.Id,
-                            RouteId = route.Id
+                            Name = "超管",
+                            AddType = AddTypes.程序,
+                            Description = "系统默认超级管理员",
+                        };
+                        db.Roles.Insert(role);
+
+                        db.SystemAccounts.Insert(new SystemAccount()
+                        {
+                            Email = "wyspaces@outlook.com",
+                            Password = "admin1234".ToSHA1(),
+                            IsSuper = true,
+                            RoleId = role.Id
                         });
+
+                        var routes = db.Routes.GetList();
+                        foreach (var route in routes)
+                        {
+                            db.RoleRoutes.Insert(new RoleRoute()
+                            {
+                                RoleId = role.Id,
+                                RouteId = route.Id
+                            });
+                        }
                     }
                 }
+                db.Commit();
             }
-
         }
         /// <summary>
         /// 刷新路由
@@ -111,29 +115,33 @@ namespace Apteryx.Routing.Role.Authority.RDS
                 }
             }
 
-            foreach (var route in _db.Routes.AsQueryable().Where(w => w.AddType == AddTypes.程序).ToList())
+            using (var db = _context.CreateContext())
             {
-                var validRoute = arrRoutes.FirstOrDefault(a => a.CtrlFullName == route.CtrlFullName && a.Tag == route.Tag);
-                if (validRoute != null)
+                foreach (var route in db.Routes.AsQueryable().Where(w => w.AddType == AddTypes.程序).ToList())
                 {
-                    route.CtrlFullName = validRoute.CtrlFullName;
-                    route.Method = validRoute.Method;
-                    route.Name = validRoute.Name;
-                    route.Description = validRoute.Description;
-                    route.Path = validRoute.Path;
-                    _db.Routes.Update(route);
-                    arrRoutes.Remove(validRoute);
+                    var validRoute = arrRoutes.FirstOrDefault(a => a.CtrlFullName == route.CtrlFullName && a.Tag == route.Tag);
+                    if (validRoute != null)
+                    {
+                        route.CtrlFullName = validRoute.CtrlFullName;
+                        route.Method = validRoute.Method;
+                        route.Name = validRoute.Name;
+                        route.Description = validRoute.Description;
+                        route.Path = validRoute.Path;
+                        db.Routes.Update(route);
+                        arrRoutes.Remove(validRoute);
+                    }
+                    else
+                    {
+                        db.Routes.DeleteById(route.Id);
+                        //将路由从所有角色中删除
+                        db.RoleRoutes.AsDeleteable().Where(d => d.RouteId == route.Id);
+                    }
                 }
-                else
-                {
-                    _db.Routes.DeleteById(route.Id);
-                    //将路由从所有角色中删除
-                    _db.RoleRoutes.AsDeleteable().Where(d => d.RouteId == route.Id);
-                }
-            }
 
-            if (arrRoutes.Any())
-                _db.Routes.InsertRange(arrRoutes);
+                if (arrRoutes.Any())
+                    db.Routes.InsertRange(arrRoutes);
+                db.Commit();
+            }
         }
     }
 }

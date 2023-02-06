@@ -43,11 +43,9 @@ namespace Apteryx.Routing.Role.Authority.RDS
 
             //注入配置
             services.AddSingleton(config);
-            SnowFlakeSingle.WorkId = 31;
-            //初始化数据库
-            new ApteryxDbContext(config).InitDataBase();
-            //注入数据操作类
-            services.AddScoped<ApteryxDbContext>();
+
+            services.AddApteryxSqlsugar(config.DbConnection);
+
             //注入权限
             services.AddAuthentication()
                 .AddJwtBearer(config.AuthenticationScheme, options =>

@@ -12,12 +12,12 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
-var conn = builder.Configuration.GetConnectionString("MySql");
+var conn = builder.Configuration.GetConnectionString("PostgreSQL");
 var db = new SqlSugarScope(new ConnectionConfig
 {
     ConnectionString = conn,
     IsAutoCloseConnection = true,
-    DbType = DbType.MySql,
+    DbType = DbType.PostgreSQL,
     ConfigureExternalServices = new ConfigureExternalServices
     {
         EntityService = (c, p) =>
@@ -35,7 +35,7 @@ db.Aop.OnLogExecuting = (sql, pars) =>
 {
     //Console.WriteLine(sql);//输出sql,查看执行sql 性能无影响
     //5.0.8.2 获取无参数化SQL 对性能有影响，特别大的SQL参数多的，调试使用
-    Console.WriteLine(UtilMethods.GetSqlString(DbType.MySql, sql, pars));
+    Console.WriteLine(UtilMethods.GetSqlString(DbType.PostgreSQL, sql, pars));
 };
 #endif
 
@@ -61,7 +61,7 @@ builder.Services.AddApteryxAuthority(new ApteryxConfig()
     DbConnection = new DbConnectionConfig()
     {
         ConnectionString = conn,
-        DbType = DbType.MySql
+        DbType = DbType.PostgreSQL
     }
 });
 

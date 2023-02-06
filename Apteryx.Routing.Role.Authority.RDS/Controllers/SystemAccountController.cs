@@ -2,6 +2,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.IdentityModel.Tokens;
+using SqlSugar;
 using Swashbuckle.AspNetCore.Annotations;
 using System.Security.Claims;
 using System.Text;
@@ -17,14 +18,14 @@ namespace Apteryx.Routing.Role.Authority.RDS.Controllers
     [SwaggerResponse((int)ApteryxCodes.字段验证未通过, null, typeof(ApteryxResult<IEnumerable<FieldValid>>))]
     public class SystemAccountController : Controller
     {
-        private readonly ApteryxDbContext _db;
+        private readonly ISugarUnitOfWork<ApteryxDbContext> _context;
 
         private static object _lock = new object();
 
         public readonly ApteryxConfig _jwtConfig;
-        public SystemAccountController(ApteryxConfig jwtConfig, ApteryxDbContext context)
+        public SystemAccountController(ApteryxConfig jwtConfig, ISugarUnitOfWork<ApteryxDbContext> context)
         {
-            _db = context;
+            _context = context;
             _jwtConfig = jwtConfig;
         }
 
@@ -46,28 +47,31 @@ namespace Apteryx.Routing.Role.Authority.RDS.Controllers
         public async Task<IActionResult> LogIn([FromBody] LogInSystemAccountModel model)
         {
             var pwd = model.Password.ToSHA1();
-            var account = await _db.SystemAccounts.GetFirstAsync(f => f.Email == model.Email && f.Password == pwd);
-            if (account == null)
+            using (var db = _context.CreateContext())
             {
-                return Ok(ApteryxResultApi.Fail(ApteryxCodes.账号或密码错误));
-            }
+                var account = await db.SystemAccounts.GetFirstAsync(f => f.Email == model.Email && f.Password == pwd);
+                if (account == null)
+                {
+                    return Ok(ApteryxResultApi.Fail(ApteryxCodes.账号或密码错误));
+                }
 
-            var role = await _db.Roles.GetFirstAsync(f => f.Id == account.RoleId);
+                var role = await db.Roles.GetFirstAsync(f => f.Id == account.RoleId);
 
-            var token = new JwtBuilder()
-                .AddAudience(_jwtConfig.TokenConfig.Audience)
-                .AddClaim(ClaimTypes.Name, account.Id.ToString())
-                .AddSubject(Guid.NewGuid().ToString())
-                .AddExpiry(_jwtConfig.TokenConfig.Expires)
-                .AddIssuer(_jwtConfig.TokenConfig.Issuer)
-                .AddSecurityKey(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtConfig.TokenConfig.Key)))
-                .Build();
-            if (_jwtConfig.IsSecurityToken)
-            {
-                var aesConfig = _jwtConfig.AESConfig;
-                return Ok(ApteryxResultApi.Susuccessful(new Jwt<ResultSystemAccountRoleModel>(token, aesConfig.Key, aesConfig.IV, new ResultSystemAccountRoleModel(account, role))));
+                var token = new JwtBuilder()
+                    .AddAudience(_jwtConfig.TokenConfig.Audience)
+                    .AddClaim(ClaimTypes.Name, account.Id.ToString())
+                    .AddSubject(Guid.NewGuid().ToString())
+                    .AddExpiry(_jwtConfig.TokenConfig.Expires)
+                    .AddIssuer(_jwtConfig.TokenConfig.Issuer)
+                    .AddSecurityKey(new SymmetricSecurityKey(Encoding.UTF8.GetBytes(_jwtConfig.TokenConfig.Key)))
+                    .Build();
+                if (_jwtConfig.IsSecurityToken)
+                {
+                    var aesConfig = _jwtConfig.AESConfig;
+                    return Ok(ApteryxResultApi.Susuccessful(new Jwt<ResultSystemAccountRoleModel>(token, aesConfig.Key, aesConfig.IV, new ResultSystemAccountRoleModel(account, role))));
+                }
+                return Ok(ApteryxResultApi.Susuccessful(new Jwt<ResultSystemAccountRoleModel>(token, new ResultSystemAccountRoleModel(account, role))));
             }
-            return Ok(ApteryxResultApi.Susuccessful(new Jwt<ResultSystemAccountRoleModel>(token, new ResultSystemAccountRoleModel(account, role))));
         }
 
         [HttpPost]
@@ -85,22 +89,26 @@ namespace Apteryx.Routing.Role.Authority.RDS.Controllers
 
             lock (_lock)
             {
-                var check = _db.SystemAccounts.GetFirst(f => f.Email == email);
-                if (check != null)
-                    return Ok(ApteryxResultApi.Fail(ApteryxCodes.邮箱已被注册, "已存在该邮箱的账户"));
-
-
-                var role = _db.Roles.GetById(model.RoleId);
-                if (role == null)
-                    return Ok(ApteryxResultApi.Fail(ApteryxCodes.角色不存在, "该角色不存在"));
-
-                _db.SystemAccounts.Insert(new SystemAccount()
+                using (var db = _context.CreateContext())
                 {
-                    Name = model.Name,
-                    Email = email,
-                    Password = pwd.ToSHA1(),
-                    RoleId = model.RoleId
-                });
+                    var check = db.SystemAccounts.GetFirst(f => f.Email == email);
+                    if (check != null)
+                        return Ok(ApteryxResultApi.Fail(ApteryxCodes.邮箱已被注册, "已存在该邮箱的账户"));
+
+
+                    var role = db.Roles.GetById(model.RoleId);
+                    if (role == null)
+                        return Ok(ApteryxResultApi.Fail(ApteryxCodes.角色不存在, "该角色不存在"));
+
+                    db.SystemAccounts.Insert(new SystemAccount()
+                    {
+                        Name = model.Name,
+                        Email = email,
+                        Password = pwd.ToSHA1(),
+                        RoleId = model.RoleId
+                    });
+                    db.Commit();
+                }
                 return Ok(ApteryxResultApi.Susuccessful());
             }
         }
@@ -116,11 +124,14 @@ namespace Apteryx.Routing.Role.Authority.RDS.Controllers
         [SwaggerResponse((int)ApteryxCodes.Unauthorized, null, typeof(ApteryxResult))]
         public async Task<IActionResult> Get([SwaggerParameter("账户ID", Required = false)] long id)
         {
-            var account = await _db.SystemAccounts.GetByIdAsync(id);
-            if (account == null)
-                return Ok(ApteryxResultApi.Fail(ApteryxCodes.账户不存在));
-            var role = await _db.Roles.GetByIdAsync(account.RoleId);
-            return Ok(ApteryxResultApi.Susuccessful(new ResultSystemAccountRoleModel(account, role)));
+            using (var db = _context.CreateContext())
+            {
+                var account = await db.SystemAccounts.GetByIdAsync(id);
+                if (account == null)
+                    return Ok(ApteryxResultApi.Fail(ApteryxCodes.账户不存在));
+                var role = await db.Roles.GetByIdAsync(account.RoleId);
+                return Ok(ApteryxResultApi.Susuccessful(new ResultSystemAccountRoleModel(account, role)));
+            }
         }
 
         [HttpPut]
@@ -136,27 +147,31 @@ namespace Apteryx.Routing.Role.Authority.RDS.Controllers
             var accountId = HttpContext.GetAccountId();
 
             var oldpwd = model.OldPassword.ToSHA1();
-            var account = await _db.SystemAccounts.GetFirstAsync(f => f.Id == accountId && f.Email == model.OldEmail && f.Password == oldpwd);
-            if (account == null)
+            using (var db = _context.CreateContext())
             {
-                return Ok(ApteryxResultApi.Fail(ApteryxCodes.账号或密码错误));
+                var account = await db.SystemAccounts.GetFirstAsync(f => f.Id == accountId && f.Email == model.OldEmail && f.Password == oldpwd);
+                if (account == null)
+                {
+                    return Ok(ApteryxResultApi.Fail(ApteryxCodes.账号或密码错误));
+                }
+
+                var check = await db.SystemAccounts.GetFirstAsync(f => f.Email == model.NewEmail.Trim() && f.Id != account.Id);
+                if (check != null)
+                    return Ok(ApteryxResultApi.Fail(ApteryxCodes.邮箱已被注册, "已存在该邮箱的账户"));
+
+                var result = account.Clone();
+
+                account.Email = model.NewEmail;
+                account.Password = model.NewPassword.ToSHA1();
+
+                //if (!_db.SystemAccounts.AsUpdateable(account).ExecuteCommandHasChange())
+                //    return Ok(ApteryxResultApi.Susuccessful("没有任何变更"));
+
+                db.SystemAccounts.Update(account);
+
+                await db.Logs.InsertAsync(new Log(accountId, "SystemAccount", ActionMethods.改, "修改账户与密码", account.ToJson(), result.ToJson()));
+                db.Commit();
             }
-
-            var check = await _db.SystemAccounts.GetFirstAsync(f => f.Email == model.NewEmail.Trim() && f.Id != account.Id);
-            if (check != null)
-                return Ok(ApteryxResultApi.Fail(ApteryxCodes.邮箱已被注册, "已存在该邮箱的账户"));
-
-            var result = account.Clone();
-
-            account.Email = model.NewEmail;
-            account.Password = model.NewPassword.ToSHA1();
-
-            //if (!_db.SystemAccounts.AsUpdateable(account).ExecuteCommandHasChange())
-            //    return Ok(ApteryxResultApi.Susuccessful("没有任何变更"));
-
-            _db.SystemAccounts.Update(account);
-
-            await _db.Logs.InsertAsync(new Log(accountId, "SystemAccount", ActionMethods.改, "修改账户与密码", account.ToJson(), result.ToJson()));
             return Ok(ApteryxResultApi.Susuccessful());
         }
 
@@ -174,18 +189,21 @@ namespace Apteryx.Routing.Role.Authority.RDS.Controllers
             var page = model.Page;
             var limit = model.Limit;
 
-            var query = _db.SystemAccounts.AsQueryable();
+            using (var db = _context.CreateContext())
+            {
+                var query = db.SystemAccounts.AsQueryable();
 
-            if (!model.Email.IsNullOrWhiteSpace())
-                query = query.Where(w => w.Email.Contains(model.Email));
+                if (!model.Email.IsNullOrWhiteSpace())
+                    query = query.Where(w => w.Email.Contains(model.Email));
 
-            if (model.RoleId != null)
-                query = query.Where(w => w.RoleId == model.RoleId);
+                if (model.RoleId != null)
+                    query = query.Where(w => w.RoleId == model.RoleId);
 
-            var count = query.Count();
-            var item = query.ToPageList(page,limit);
+                var count = query.Count();
+                var item = query.ToPageList(page, limit);
 
-            return Ok(ApteryxResultApi.Susuccessful(new PageList<SystemAccount>(count, item)));
+                return Ok(ApteryxResultApi.Susuccessful(new PageList<SystemAccount>(count, item)));
+            }
         }
     }
 }

@@ -7,10 +7,6 @@ namespace Apteryx.Routing.Role.Authority.RDS.Data
     //为了照顾需要扩展的朋友，我们就来扩展一个SimpleClient，取名叫DbSet
     public class DbSet<T> : SimpleClient<T> where T : class, new()
     {
-        public DbSet(ISqlSugarClient context = null) : base(context)
-        {
-            base.Context = context;
-        }
         //SimpleClient中的方法满足不了你，你可以扩展自已的方法
 
         ///// <summary>

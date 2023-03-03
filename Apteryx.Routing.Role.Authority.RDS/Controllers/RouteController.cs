@@ -10,7 +10,9 @@ using SqlSugar;
 
 namespace Apteryx.Routing.Role.Authority.RDS.Controllers
 {
+#if !DEBUG
     [Authorize(AuthenticationSchemes = "apteryx")]
+#endif
     [SwaggerTag("路由服务")]
     [Route("cgi-bin/apteryx/route")]
     [Produces("application/json")]

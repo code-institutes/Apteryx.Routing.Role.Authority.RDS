@@ -7,7 +7,9 @@ using Swashbuckle.AspNetCore.Annotations;
 
 namespace Apteryx.Routing.Role.Authority.RDS.Controllers
 {
+#if !DEBUG
     [Authorize(AuthenticationSchemes = "apteryx")]
+#endif
     [SwaggerTag("日志服务")]
     [Route("cgi-bin/apteryx/log")]
     [Produces("application/json")]
@@ -72,7 +74,7 @@ namespace Apteryx.Routing.Role.Authority.RDS.Controllers
 
                 var count = query.Count();
                 var data = query.OrderByDescending(o => o.Id).ToPageList(page, limit);
-                var listLog = data.ToList().Select(s =>
+                var listLog = data.Select(s =>
                 {
                     var sysAccount = _db.SystemAccounts.GetById(s.SystemAccountId);
                     var role = _db.Roles.GetById(sysAccount.RoleId);
